@@ -1,6 +1,6 @@
 # PHandy — image to painting + OCR (100% client-side)
 
-Made by [@r1yoma](https://instagram.com/r1yoma) ·
+Made by [@r1yoma](https://www.instagram.com/r1yoma/) ·
 repo: [RYOMA-SyY/PHandy](https://github.com/RYOMA-SyY/PHandy)
 
 ![React 19](https://img.shields.io/badge/react-19-61DAFB?logo=react&logoColor=white)

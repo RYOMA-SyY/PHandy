@@ -322,7 +322,7 @@ export default function App() {
             {prog.playing ? 'Painting' : 'Ready'} — {prog.drawn.toLocaleString()} / {prog.total.toLocaleString()} strokes
           </p>
           <p className="status-bar-field">local only · OCR on this PC{prog.secs ? ` · done in ${prog.secs.toFixed(1)}s · likeness ${prog.like}%` : ''}</p>
-          <p className="status-bar-field">made by <a href="https://instagram.com/r1yoma" target="_blank" rel="noreferrer">@r1yoma</a> · <a href="https://github.com/RYOMA-SyY/PHandy" target="_blank" rel="noreferrer">GitHub</a></p>
+          <p className="status-bar-field">made by <a href="https://www.instagram.com/r1yoma/" target="_blank" rel="noreferrer">@r1yoma</a> · <a href="https://github.com/RYOMA-SyY" target="_blank" rel="noreferrer">GitHub</a></p>
         </div>
       </div>
 
