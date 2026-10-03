@@ -1,5 +1,8 @@
 # PHandy — image to painting + OCR (100% client-side)
 
+Made by [@r1yoma](https://instagram.com/r1yoma) ·
+repo: [RYOMA-SyY/PHandy](https://github.com/RYOMA-SyY/PHandy)
+
 Drop a photo, watch it hand-painted stroke by stroke in the browser.
 Press **Read text (OCR)** to detect text lines with boxes — powered by
 [Tesseract.js](https://github.com/naptha/tesseract.js) running fully in

@@ -69,6 +69,7 @@
 }
 .lines .t { flex: 1; user-select: text; }
 .lines .c { color: #1f5f9f; font-size: 11px; white-space: nowrap; }
+.status-bar-field a { color: #1f5f9f; }
 .dlgoverlay {
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
