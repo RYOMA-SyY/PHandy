@@ -1,0 +1,33 @@
+# PHandy
+
+> PHandy is a 100% client-side web app that turns photos into hand-painted
+> oil paintings stroke by stroke in the browser, with offline OCR text
+> detection. No server, no keys, no uploads.
+
+## What it does
+
+- Drop a JPG/PNG/WebP photo; the app hand-paints it live on canvas.
+- 12 finishes: impasto, watercolor, impressionist, palette knife, gouache,
+  pencil sketch, pointillism, ink wash, soft pastel, posterize, mosaic,
+  pixel art.
+- Likeness slider (70-98%): error-driven glaze rounds repaint the worst
+  areas until the measured likeness score hits the target.
+- Quality tiers (Fast 768px to Ultra 2048px) with automatic trimming on
+  weak devices.
+- Read text (OCR): Tesseract.js detects text lines with confidence scores
+  and bounding boxes overlaid on the painting.
+- Export the finished painting as PNG or true-vector SVG.
+
+## Tech
+
+- React 19 + Vite 8, styled with 7.css (Windows 7 components).
+- p5.brush 2.2.3 (MIT): natural-media brushes, vector fields, wash/hatch.
+- Tesseract.js 7 (Apache-2.0): in-browser OCR, cached after first load.
+- Custom hand-built WASM module: Sobel magnitude + octant direction
+  fields for stroke planning, embedded as base64 with a JS fallback.
+
+## Links
+
+- App: https://phandy.netlify.app/
+- Repo: https://github.com/RYOMA-SyY/PHandy
+- Author: https://www.instagram.com/r1yoma/
