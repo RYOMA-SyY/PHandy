@@ -34,10 +34,14 @@ No server, no keys, no uploads.
 12 finishes: impasto, watercolor, impressionist, palette knife, gouache,
 pencil sketch (dual-angle cross-hatch tooth + graphite strokes),
 pointillism, ink wash, soft pastel, posterize, mosaic, pixel art.
-Finish line shows a likeness score (painting vs photo, 0-100). The
-Likeness slider (70-95%) sets a target: the engine adds error-driven
-glaze rounds with exact colors until the measured score hits it
-(lower = faster, higher = slower, machine-independent).
+  Finish line shows a likeness score (painting vs photo, 0-100). The
+  Likeness slider (70-98%) sets a target: the engine adds error-driven
+  glaze rounds with exact colors until the measured score hits it
+  (lower = faster, higher = slower, machine-independent).
+  Quality tiers (Fast 768px / Balanced 1024px / High 1536px / Ultra 2048px)
+  scale resolution and stroke budget, with automatic trimming on weak
+  devices so slow PCs degrade gracefully instead of freezing.
+  OCR panel adds PSM layout modes, contrast cleanup, and extra languages.
 
 ## Run locally
 

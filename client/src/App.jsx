@@ -33,6 +33,10 @@ export default function App() {
   const [detail, setDetail] = useState(4);
   const [speed, setSpeed] = useState(160);
   const [target, setTarget] = useState(85);
+  const [quality, setQuality] = useState('balanced');
+  const [psm, setPsm] = useState('3');
+  const [contrast, setContrast] = useState(true);
+  const [ocrLang, setOcrLang] = useState('eng');
   const [lines, setLines] = useState([]);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrError, setOcrError] = useState('');
@@ -109,32 +113,44 @@ export default function App() {
   }, [lines, showBoxes, drawOverlay]);
 
   const ocrBytes = useCallback(async () => {
-    // Upscale small photos for OCR (small/dense text) — painting still uses the original.
+    // Upscale small photos + optional contrast cleanup for OCR (painting uses the original).
     const blob0 = new Blob([bytesRef.current], { type: 'image/png' });
     try {
       const bmp = await createImageBitmap(blob0);
       const m = Math.max(bmp.width, bmp.height);
-      if (m >= 1200) { bmp.close(); return blob0; }
-      const sc = 1200 / m;
+      const sc = m >= 1200 ? 1 : 1200 / m;
       const c = document.createElement('canvas');
-      c.width = Math.round(bmp.width * sc);
-      c.height = Math.round(bmp.height * sc);
-      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      c.width = Math.max(1, Math.round(bmp.width * sc));
+      c.height = Math.max(1, Math.round(bmp.height * sc));
+      const g = c.getContext('2d');
+      if (contrast) g.filter = 'grayscale(1) contrast(1.35)';
+      g.drawImage(bmp, 0, 0, c.width, c.height);
       bmp.close();
+      if (sc === 1 && !contrast) return blob0;
       return await new Promise((res) => c.toBlob(res, 'image/png'));
     } catch {
       return blob0;
     }
-  }, []);
+  }, [contrast]);
 
   async function getWorker() {
     if (workerRef.current) return workerRef.current;
     if (!window.Tesseract) throw new Error('OCR engine failed to load (needs internet once)');
     setOcrPhase('loading');
-    const w = await window.Tesseract.createWorker('eng');
+    const langs = ocrLang.includes('+') ? ocrLang.split('+') : ocrLang;
+    const w = await window.Tesseract.createWorker(langs);
     workerRef.current = w;
     return w;
   }
+
+  useEffect(() => {
+    // Language change needs a fresh worker (traineddata is bound at creation).
+    if (!workerRef.current) return;
+    (async () => {
+      try { await workerRef.current.terminate(); } catch { /* ignore */ }
+      workerRef.current = null;
+    })();
+  }, [ocrLang]);
 
   const readText = useCallback(async () => {
     if (!bytesRef.current) { alert('Drop a photo first.'); return; }
@@ -152,6 +168,7 @@ export default function App() {
         im.onerror = rej;
         im.src = url;
       });
+      try { await worker.setParameters({ tessedit_pageseg_mode: psm }); } catch { /* keep defaults */ }
       const { data } = await worker.recognize(img);
       URL.revokeObjectURL(url);
       url = null;
@@ -174,7 +191,7 @@ export default function App() {
       setOcrBusy(false);
       setOcrPhase('');
     }
-  }, [ocrBytes]);
+  }, [ocrBytes, psm]);
 
   const syncCfg = (patch, restart) => {
     const p = painterRef.current;
@@ -240,10 +257,39 @@ export default function App() {
                   <input type="checkbox" id="showboxes" checked={showBoxes} onChange={(e) => setShowBoxes(e.target.checked)} />
                   <label htmlFor="showboxes">Show text boxes</label>
                 </div>
+                <div className="field-row" style={{ marginTop: 6 }}>
+                  <label htmlFor="psm">OCR mode</label>
+                  <select id="psm" value={psm} onChange={(e) => setPsm(e.target.value)}>
+                    <option value="3">Auto layout</option>
+                    <option value="6">Uniform block</option>
+                    <option value="11">Sparse text</option>
+                  </select>
+                </div>
+                <div className="field-row">
+                  <label htmlFor="ocrlang">Language</label>
+                  <select id="ocrlang" value={ocrLang} onChange={(e) => setOcrLang(e.target.value)}>
+                    <option value="eng">English</option>
+                    <option value="eng+fra">English + French</option>
+                    <option value="eng+spa">English + Spanish</option>
+                  </select>
+                </div>
+                <div className="field-row" style={{ marginTop: 6 }}>
+                  <input type="checkbox" id="ocrcontrast" checked={contrast} onChange={(e) => setContrast(e.target.checked)} />
+                  <label htmlFor="ocrcontrast">Contrast cleanup</label>
+                </div>
               </fieldset>
 
               <fieldset>
                 <legend>Style</legend>
+                <div className="field-row">
+                  <label htmlFor="quality">Quality</label>
+                  <select id="quality" value={quality} onChange={(e) => { setQuality(e.target.value); syncCfg({ quality: e.target.value }, true); }}>
+                    <option value="fast">Fast (768px)</option>
+                    <option value="balanced">Balanced (1024px)</option>
+                    <option value="high">High (1536px)</option>
+                    <option value="ultra">Ultra (2048px)</option>
+                  </select>
+                </div>
                 <div className="field-row">
                   <label htmlFor="finish">Finish</label>
                   <select id="finish" value={style} onChange={(e) => { setStyle(e.target.value); syncCfg({ style: e.target.value }, true); }}>
@@ -269,7 +315,7 @@ export default function App() {
                 </div>
                 <div className="field-row">
                   <label htmlFor="like">Likeness ({target}%)</label>
-                  <input type="range" id="like" min="70" max="95" step="1" value={target}
+                  <input type="range" id="like" min="70" max="98" step="1" value={target}
                     onChange={(e) => { setTarget(+e.target.value); painterRef.current && painterRef.current.setTarget(+e.target.value); }} />
                 </div>
               </fieldset>

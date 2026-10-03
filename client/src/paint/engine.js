@@ -5,7 +5,7 @@ import { WF_B64 } from './wasmB64.js';
 
 export const PAPER = '#e8ddc9';
 const GRAIN = 0.1;
-const WF_OFF = { gray: 0, mag: 147456, dir: 294912 };
+const WF_OFF = { gray: 0, mag: 262144, dir: 524288 };
 export const STYLE_FX = {
   impasto: { w: 1.35, a: 1 },
   knife: { w: 1.6, a: 1 },
@@ -120,7 +120,20 @@ export function createPainter(paintCanvas, hooks = {}) {
     W: 0, H: 0, t0: 0, orient: null, ow: 0, oh: 0, magN: null, detail: null,
     backend: 'natural', styleCur: 'impasto', wasmUsed: false,
   };
-  const cfg = { backend: 'natural', style: 'impasto', detail: 4, speed: 160, target: 85 };
+  const cfg = { backend: 'natural', style: 'impasto', detail: 4, speed: 160, target: 85, quality: 'balanced' };
+  const QUALITY = {
+    fast: { res: 768, mult: 0.5, capClassic: 25000, capNatural: 8000 },
+    balanced: { res: 1024, mult: 1, capClassic: 60000, capNatural: 22000 },
+    high: { res: 1536, mult: 1.5, capClassic: 120000, capNatural: 45000 },
+    ultra: { res: 2048, mult: 2, capClassic: 250000, capNatural: 90000 },
+  };
+  function deviceCap() {
+    try {
+      const mem = navigator.deviceMemory || 8, cores = navigator.hardwareConcurrency || 8;
+      if (mem <= 4 || cores <= 2) return 'balanced';
+    } catch { /* unknown device: no cap */ }
+    return null;
+  }
   const NB = { cv: null, W: 0, H: 0, field: false, custom: false };
   let lastProg = 0;
 
@@ -292,8 +305,8 @@ export function createPainter(paintCanvas, hooks = {}) {
   }
 
   async function computeFields() {
-    // WASM layout caps the thumb at 192x192 — scale the long edge to fit.
-    const sc = 192 / Math.max(S.W, S.H);
+    // WASM layout caps the thumb at 256x256 — scale the long edge to fit.
+    const sc = 256 / Math.max(S.W, S.H);
     const tw = Math.max(8, Math.round(S.W * sc)), th = Math.max(8, Math.round(S.H * sc));
     const c = document.createElement('canvas');
     c.width = tw; c.height = th;
@@ -396,10 +409,11 @@ export function createPainter(paintCanvas, hooks = {}) {
     const use = passes.slice(0, Math.min(passes.length, cfg.detail + 1));
     if (cfg.detail === 5) use.push({ w: 0.1, a: 0.95, jitter: 4 });
     const dmult = [0.35, 0.6, 0.85, 1.15, 1.5][cfg.detail - 1] || 1;
+    const qm = (QUALITY[cfg.quality] || QUALITY.balanced).mult;
     const caps = (S.backend === 'natural'
       ? [2500, 4000, 5000, 6000, 4000]
       : [5000, 9000, 12000, 14000, 10000]
-    ).map((c) => Math.round(c * dmult * (fx.c || 1)));
+    ).map((c) => Math.round(c * dmult * qm * (fx.c || 1)));
     const list = [], tw = S.ow, th = S.oh;
     const ST = S.styleCur, gridStyle = ST === 'mosaic' || ST === 'pixel';
     const grid = gridStyle ? Math.max(5, Math.round(S.W / 180)) : 0;
@@ -446,10 +460,49 @@ export function createPainter(paintCanvas, hooks = {}) {
       }
       for (let k = 0; k < arr.length; k += 8192) list.push.apply(list, arr.slice(k, k + 8192));
     }
+    // Coverage sweep at high targets: one small exact stroke per grid cell
+    // so no region ends up unpainted (stratified, not luck-based).
+    if (cfg.target >= 82) {
+      const gs = Math.max(6, S.W / 160), covCap = Math.round(6000 * qm);
+      let added = 0;
+      for (let gy = gs / 2; gy < S.H && added < covCap; gy += gs) {
+        for (let gx = gs / 2; gx < S.W && added < covCap; gx += gs) {
+          if (Math.random() < 0.35) continue;
+          const jx = gx + (Math.random() - 0.5) * gs * 0.5;
+          const jy = gy + (Math.random() - 0.5) * gs * 0.5;
+          const c0 = colAt(jx, jy);
+          list.push({
+            x: jx, y: jy, r: c0[0], g: c0[1], b: c0[2], pi: 4,
+            a: sampleAngle(jx, jy), len: gs * 1.2, w: gs * 0.9,
+            al: 1, j: 0, exact: true,
+          });
+          added++;
+        }
+      }
+    }
+    // Preflight safety: thin uniformly past the device/budget cap so weak
+    // machines degrade gracefully instead of freezing.
+    let note = '';
+    const q = QUALITY[cfg.quality] || QUALITY.balanced;
+    let hard = S.backend === 'natural' ? q.capNatural : q.capClassic;
+    const dc = deviceCap();
+    if (dc) {
+      const dq = QUALITY[dc];
+      const dcap = S.backend === 'natural' ? dq.capNatural : dq.capClassic;
+      if (dcap < hard) { hard = dcap; note = ` · auto: ${dc} device cap`; }
+    }
+    if (list.length > hard) {
+      const keep = [];
+      const stride = list.length / hard;
+      for (let i = 0; i < hard; i++) keep.push(list[(i * stride) | 0]);
+      list.length = 0;
+      for (let k = 0; k < keep.length; k += 8192) list.push.apply(list, keep.slice(k, k + 8192));
+      note += ` · trimmed to ${hard.toLocaleString()}`;
+    }
     S.strokes = list; S.drawn = 0; S.t0 = performance.now();
   S.refRounds = 0; S.refLast = 0; S.lastLike = 0;
     if (hooks.onPlan) {
-      hooks.onPlan(`${list.length.toLocaleString()} strokes${S.backend === 'natural' ? ' · p5.brush' : ' · classic'}${S.wasmUsed ? ' · wasm' : ' · js'}`);
+      hooks.onPlan(`${list.length.toLocaleString()} strokes · ${cfg.quality}${S.backend === 'natural' ? ' · p5.brush' : ' · classic'}${S.wasmUsed ? ' · wasm' : ' · js'}${note}`);
     }
     emit(true);
   }
@@ -638,8 +691,8 @@ export function createPainter(paintCanvas, hooks = {}) {
     const like = likeness();
     const gain = like - (S.lastLike || 0);
     S.lastLike = like;
-    if (like >= cfg.target || S.refRounds >= 5) return false;
-    if (S.refRounds > 0 && gain < 0.5) return false;
+    if (like >= cfg.target || S.refRounds >= (cfg.target > 92 ? 8 : 5)) return false;
+    if (S.refRounds > 0 && gain < (cfg.target > 92 ? 0.2 : 0.5)) return false;
     S.refRounds++;
     if (!addGlazeStrokes()) return false;
     if (hooks.onPlan) {
@@ -681,7 +734,8 @@ export function createPainter(paintCanvas, hooks = {}) {
     get hasJob() { return S.strokes.length > 0; },
     get done() { return S.strokes.length > 0 && S.drawn >= S.strokes.length; },
     async loadImage(img) {
-      const [w, h] = fitSize(img.naturalWidth || img.width, img.naturalHeight || img.height);
+      const q = QUALITY[cfg.quality] || QUALITY.balanced;
+      const [w, h] = fitSize(img.naturalWidth || img.width, img.naturalHeight || img.height, q.res);
       S.img = img; S.W = w; S.H = h;
       paintCanvas.width = w; paintCanvas.height = h;
       srcC.width = w; srcC.height = h;
