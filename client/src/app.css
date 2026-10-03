@@ -1,0 +1,78 @@
+/* Hand Paint — only what 7.css does not provide:
+   wallpaper, window sizing, canvas grid/stack/overlay, drop zone,
+   OCR lines list, dialog overlay. Everything else is 7.css. */
+.desktop {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 12px; overflow: auto;
+  background:
+    radial-gradient(1000px 420px at 72% 108%, rgba(255,255,190,.6), transparent 60%),
+    radial-gradient(800px 420px at 12% 18%, rgba(255,255,255,.55), transparent 55%),
+    linear-gradient(180deg,#245e9d 0%,#3f8fd0 32%,#8ec8ec 50%,#c9e6f8 56%,#4b97d6 58%,#1a4a82 100%);
+}
+.desktop > .window {
+  width: min(1180px, 97vw);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.desktop > .window > .window-body {
+  overflow: auto;
+  min-height: 0;
+}
+.hp-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 8px;
+  min-height: 0;
+}
+.hp-grid > div { min-width: 0; }
+@media(max-width: 900px) {
+  .hp-grid { grid-template-columns: 1fr; }
+  .desktop { align-items: flex-start; }
+}
+.planline {
+  font-size: 11px;
+  color: #4d4d4d;
+  margin: 0 0 4px 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stack { position: relative; }
+.stack canvas { width: 100%; display: block; }
+.stack canvas.overlay { position: absolute; inset: 0; pointer-events: none; }
+#paint { background: #e8ddc9; cursor: crosshair; }
+.drop {
+  border: 1px dashed #6f7f93;
+  padding: 14px;
+  text-align: center;
+  color: #4d4d4d;
+  cursor: pointer;
+  background: #fbfdff;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.err { font-size: 11px; color: #c73b3b; margin-top: 6px; }
+.kbdhint { font-size: 11px; color: #4d4d4d; margin-left: auto; }
+.lines { max-height: 220px; overflow: auto; font-size: 12px; }
+.lines .dim { color: #6d6d6d; font-size: 11px; }
+.lines .line {
+  display: flex; gap: 6px; align-items: center;
+  padding: 3px 4px; border: 1px solid transparent;
+}
+.lines .line:hover { background: #e5f3ff; border-color: #99d1ff; }
+.lines .n {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; font-size: 10px; color: #fff;
+  background: linear-gradient(to bottom,#7db9e8,#1f5f9f);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.lines .t { flex: 1; user-select: text; }
+.lines .c { color: #1f5f9f; font-size: 11px; white-space: nowrap; }
+.dlgoverlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,25,45,.35);
+}
+.field-row > label { white-space: nowrap; }
+.field-row > select, .field-row > input[type=range] { flex: 1; min-width: 0; }

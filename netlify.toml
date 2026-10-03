@@ -1,0 +1,8 @@
+# PHandy deploys as a static site: everything runs in the browser.
+[build]
+  base = "client"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "22"
