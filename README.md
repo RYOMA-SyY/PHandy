@@ -31,10 +31,10 @@ No server, no keys, no uploads.
   Sobel magnitude + octant direction fields for stroke planning, embedded
   as base64 with an identical JS fallback.
 
-  14 finishes: impasto, watercolor, impressionist, palette knife, gouache,
+  18 finishes: impasto, watercolor, impressionist, palette knife, gouache,
 pencil sketch (dual-angle cross-hatch tooth + graphite strokes),
   pointillism, ink wash, soft pastel, posterize, mosaic, pixel art,
-  acrylic, charcoal.
+  acrylic, charcoal, flow lines, sculpted oil, dagger taper, leaf stamps.
   Finish line shows a likeness score (painting vs photo, 0-100). The
   Likeness slider (70-98%) sets a target: the engine adds error-driven
   glaze rounds with exact colors until the measured score hits it

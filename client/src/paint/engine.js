@@ -21,6 +21,10 @@ export const STYLE_FX = {
   pixel: { w: 1.0, a: 1 },
   acrylic: { w: 1.0, a: 1 },
   charcoal: { w: 1.2, a: 0.8 },
+  flow: { w: 1, a: 0.9 },
+  sculpt: { w: 1.5, a: 1 },
+  dagger: { w: 0.9, a: 1 },
+  stamp: { w: 1.2, a: 0.95 },
 };
 
 function quant(v, levels) {
@@ -68,6 +72,10 @@ const NB_BRUSH = {
   pixel: ['HB', 'HB', '2B', '2B', 'rotring'],
   acrylic: ['drybrush', 'oilflat', 'crayon', 'HB', '2B'],
   charcoal: ['charcoal', 'charcoal', 'HB', '2B', 'pencilfine'],
+  flow: ['HB', 'HB', 'pencilfine', 'pencilfine', 'pencilfine'],
+  sculpt: ['charcoal', 'oilflat', 'HB', '2B', 'rotring'],
+  dagger: ['HB', 'rotring', 'rotring', 'pen', 'pen'],
+  stamp: ['leafstamp', 'leafstamp', 'leafstamp', 'leafstamp', 'crayon'],
 };
 
 let wfPromise = null;
@@ -208,6 +216,15 @@ export function createPainter(paintCanvas, hooks = {}) {
       brush.add('drybrush', { type: 'default', weight: 0.5, scatter: 1.2, sharpness: 0.75, grain: 2.5, opacity: 90, spacing: 0.12, pressure: [0.7, 1.2, 0.7], rotate: 'natural', noise: 0.5 });
       brush.add('washsoft', { type: 'spray', weight: 1.4, scatter: 3.2, opacity: 26, spacing: 0.9, pressure: [1, 0.8], rotate: 'random', markerTip: false, noise: 0.4 });
       brush.add('pencilfine', { type: 'default', weight: 0.22, scatter: 0.35, sharpness: 0.35, grain: 9, opacity: 150, spacing: 0.08, pressure: [0.6, 1.3, 0.6], rotate: 'none', noise: 0.3 });
+      brush.add('leafstamp', {
+        type: 'custom', weight: 1.8, scatter: 0.5, opacity: 110, spacing: 0.55,
+        pressure: [0.7, 1.3, 0.7], rotate: 'random', markerTip: false, noise: 0.35,
+        tip: (_m) => {
+          _m.noStroke(); _m.fill(30);
+          _m.push(); _m.rotate(0.6); _m.ellipse(0, -6, 44, 20); _m.pop();
+          _m.rect(-2, 2, 4, 26);
+        },
+      });
       NB.custom = true;
     }
     brush.seed(seed);
@@ -258,6 +275,17 @@ export function createPainter(paintCanvas, hooks = {}) {
       brush.wash(`rgb(${s.r | 0},${s.g | 0},${s.b | 0})`, 255);
       brush.rect(s.x - s.w / 2, s.y - s.w / 2, s.w, s.w, 'corner');
       brush.noWash();
+      return;
+    }
+    if (S.styleCur === 'sculpt') {
+      // Mass pass + offset light pass: the only style that draws twice.
+      const c = s.exact ? [s.r, s.g, s.b] : jitterCol(s.r, s.g, s.b, s.j);
+      const wt = Math.min(3.5, Math.max(0.5, (s.w * 1.3) / 9));
+      brush.set('charcoal', `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`, wt);
+      brush.flowLine(s.x, s.y, s.len, s.a);
+      const nx = -Math.sin(s.a), ny = Math.cos(s.a), off = s.w * 0.3;
+      brush.set('HB', 'rgb(255,255,255)', Math.max(0.3, wt * 0.4));
+      brush.flowLine(s.x + nx * off, s.y + ny * off, s.len * 0.9, s.a);
       return;
     }
     const table = NB_BRUSH[S.styleCur] || NB_BRUSH.impasto;
@@ -433,6 +461,27 @@ export function createPainter(paintCanvas, hooks = {}) {
     const totalCells = gridStyle ? Math.ceil(S.W / grid) * Math.ceil(S.H / grid) : 0;
     const cellOf = (x, y) => Math.min(th - 1, Math.max(0, Math.round((y / S.H) * (th - 1)))) * tw
       + Math.min(tw - 1, Math.max(0, Math.round((x / S.W) * (tw - 1))));
+    if (ST === 'flow') {
+      // Streamlines, not dabs: seed on structure, draw long field-following lines.
+      const target = Math.max(800, Math.round(caps.reduce((a, b) => a + b, 0) / 8));
+      const scale = S.W / 1024;
+      let guard = 0;
+      while (list.length < target && guard < target * 20) {
+        guard++;
+        const cu = (Math.random() * tw) | 0, cvv = (Math.random() * th) | 0, kk = cvv * tw + cu;
+        if (S.magN[kk] < 0.05) continue;
+        if (Math.random() > 0.12 + 0.88 * S.detail[kk]) continue;
+        const jx = ((cu + 0.15 + Math.random() * 0.7) / tw) * S.W;
+        const jy = ((cvv + 0.15 + Math.random() * 0.7) / th) * S.H;
+        const c0 = colAt(jx, jy), cc = styleColor(c0[0], c0[1], c0[2], ST);
+        list.push({
+          x: jx, y: jy, r: cc[0], g: cc[1], b: cc[2], pi: 3,
+          a: sampleAngle(jx, jy), len: (120 + Math.random() * 260) * scale,
+          w: (1.5 + Math.random() * 2.5) * Math.max(0.75, scale),
+          al: 0.85, j: 4,
+        });
+      }
+    } else {
     for (let pi = 0; pi < use.length; pi++) {
       if (gridStyle && seen.size >= totalCells) break;
       const p = use[pi], cap = caps[Math.min(pi, 4)];
@@ -465,16 +514,17 @@ export function createPainter(paintCanvas, hooks = {}) {
         const ll = gridStyle ? ww : bw * (2.2 + Math.random() * 2.4) * (0.7 + 0.9 * coh);
         arr.push({
           x: jx, y: jy, r: cc[0], g: cc[1], b: cc[2], pi,
-          a: gridStyle ? 0 : sampleAngle(jx, jy) + (Math.random() - 0.5) * 0.6,
+          a: gridStyle ? 0 : ST === 'stamp' ? Math.random() * Math.PI : sampleAngle(jx, jy) + (Math.random() - 0.5) * 0.6,
           len: ll, w: ww,
           al: Math.min(1, p.a * fx.a), j: p.jitter,
         });
       }
       for (let k = 0; k < arr.length; k += 8192) list.push.apply(list, arr.slice(k, k + 8192));
     }
+    }
     // Coverage sweep at high targets: one small exact stroke per grid cell
     // so no region ends up unpainted (stratified, not luck-based).
-    if (cfg.target >= 82) {
+    if (cfg.target >= 82 && ST !== 'flow') {
       const gs = Math.max(6, S.W / 160), covCap = Math.round(6000 * qm);
       let added = 0;
       for (let gy = gs / 2; gy < S.H && added < covCap; gy += gs) {
@@ -537,6 +587,35 @@ export function createPainter(paintCanvas, hooks = {}) {
     }
     const col = `rgb(${rr | 0},${gg | 0},${bb | 0})`;
     const deg = ((s.a * 180) / Math.PI).toFixed(1);
+    if (st === 'flow') {
+      let pts = `${f(s.x)},${f(s.y)}`, fx = s.x, fy = s.y;
+      const steps = Math.min(40, Math.max(8, (s.len / 8) | 0)), dh = s.len / steps;
+      for (let k = 0; k < steps; k++) {
+        const fa = sampleAngle(fx, fy);
+        fx += Math.cos(fa) * dh; fy += Math.sin(fa) * dh;
+        pts += ` ${f(fx)},${f(fy)}`;
+      }
+      return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-opacity="${(s.al * 0.9).toFixed(3)}" stroke-width="${f(Math.max(0.6, s.w))}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+    if (st === 'sculpt') {
+      const L = s.len, Wd = s.w * 1.15;
+      const li = Math.cos(s.a - Math.PI * 0.75), hi = Math.abs(li), side = li >= 0 ? -1 : 1;
+      const edge = Math.max(1, Wd * 0.3);
+      let o = `<g transform="translate(${f(s.x)} ${f(s.y)}) rotate(${deg})"><rect x="${f(-L / 2 + 1.5)}" y="${f(-Wd / 2 + 2)}" width="${f(L)}" height="${f(Wd)}" fill="#000000" fill-opacity="${(0.25 * s.al).toFixed(3)}"/><rect x="${f(-L / 2)}" y="${f(-Wd / 2)}" width="${f(L)}" height="${f(Wd)}" fill="${col}" fill-opacity="${s.al.toFixed(3)}"/>`;
+      o += `<rect x="${f(-L / 2)}" y="${f(side < 0 ? -Wd / 2 : Wd / 2 - edge)}" width="${f(L)}" height="${f(edge)}" fill="#ffffff" fill-opacity="${(0.05 + 0.25 * hi).toFixed(3)}"/>`;
+      o += `<rect x="${f(-L / 2)}" y="${f(side < 0 ? Wd / 2 - edge : -Wd / 2)}" width="${f(L)}" height="${f(edge)}" fill="#000000" fill-opacity="${(0.05 + 0.22 * hi).toFixed(3)}"/></g>`;
+      return o;
+    }
+    if (st === 'dagger') {
+      const dx = Math.cos(s.a), dy = Math.sin(s.a), nx = -dy, ny = dx;
+      const L = s.len, w0 = s.w, w1 = Math.max(0.4, s.w * 0.15);
+      const tx = s.x - dx * L / 2, ty = s.y - dy * L / 2;
+      const hx = s.x + dx * L / 2, hy = s.y + dy * L / 2;
+      return `<polygon points="${f(tx + nx * w0 / 2)},${f(ty + ny * w0 / 2)} ${f(hx + nx * w1 / 2)},${f(hy + ny * w1 / 2)} ${f(hx - nx * w1 / 2)},${f(hy - ny * w1 / 2)} ${f(tx - nx * w0 / 2)},${f(ty - ny * w0 / 2)}" fill="${col}" fill-opacity="${s.al.toFixed(3)}"/>`;
+    }
+    if (st === 'stamp') {
+      return `<g transform="translate(${f(s.x)} ${f(s.y)}) rotate(${deg})"><ellipse cx="0" cy="${f(-s.w * 0.2)}" rx="${f(s.len * 0.42)}" ry="${f(s.w * 0.5)}" fill="${col}" fill-opacity="${s.al.toFixed(3)}"/><line x1="0" y1="${f(s.w * 0.2)}" x2="0" y2="${f(s.w * 0.2 + s.len * 0.35)}" stroke="${col}" stroke-opacity="${(s.al * 0.8).toFixed(3)}" stroke-width="${f(Math.max(1, s.w * 0.12))}"/></g>`;
+    }
     if (st === 'mosaic' || st === 'pixel') {
       return `<rect x="${f(s.x - s.w / 2)}" y="${f(s.y - s.w / 2)}" width="${f(s.w)}" height="${f(s.w)}" fill="${col}"/>`;
     }
@@ -576,6 +655,62 @@ export function createPainter(paintCanvas, hooks = {}) {
     if (st === 'inkwash') st = 'knife';
     const c = s.exact ? [s.r, s.g, s.b] : jitterCol(rr, gg, bb, jj);
     const R = c[0] | 0, G2 = c[1] | 0, B = c[2] | 0;
+    if (st === 'flow') {
+      pctx.strokeStyle = `rgba(${R},${G2},${B},${(s.al * 0.9).toFixed(3)})`;
+      pctx.lineWidth = Math.max(0.6, s.w);
+      pctx.lineCap = 'round'; pctx.lineJoin = 'round';
+      pctx.beginPath(); pctx.moveTo(s.x, s.y);
+      let fx = s.x, fy = s.y;
+      const steps = Math.min(40, Math.max(8, (s.len / 8) | 0)), dh = s.len / steps;
+      for (let k = 0; k < steps; k++) {
+        const fa = sampleAngle(fx, fy);
+        fx += Math.cos(fa) * dh; fy += Math.sin(fa) * dh;
+        pctx.lineTo(fx, fy);
+      }
+      pctx.stroke();
+      return;
+    }
+    if (st === 'sculpt') {
+      const L = s.len, Wd = s.w * 1.15;
+      const li = Math.cos(s.a - Math.PI * 0.75), hi = Math.abs(li), side = li >= 0 ? -1 : 1;
+      pctx.save(); pctx.translate(s.x, s.y); pctx.rotate(s.a);
+      pctx.fillStyle = `rgba(0,0,0,${(0.25 * s.al).toFixed(3)})`;
+      pctx.fillRect(-L / 2 + 1.5, -Wd / 2 + 2, L, Wd);
+      pctx.fillStyle = `rgba(${R},${G2},${B},${s.al.toFixed(3)})`;
+      pctx.fillRect(-L / 2, -Wd / 2, L, Wd);
+      pctx.fillStyle = `rgba(255,255,255,${(0.05 + 0.25 * hi).toFixed(3)})`;
+      if (side < 0) pctx.fillRect(-L / 2, -Wd / 2, L, Math.max(1, Wd * 0.3));
+      else pctx.fillRect(-L / 2, Wd / 2 - Math.max(1, Wd * 0.3), L, Math.max(1, Wd * 0.3));
+      pctx.fillStyle = `rgba(0,0,0,${(0.05 + 0.22 * hi).toFixed(3)})`;
+      if (side < 0) pctx.fillRect(-L / 2, Wd / 2 - Math.max(1, Wd * 0.3), L, Math.max(1, Wd * 0.3));
+      else pctx.fillRect(-L / 2, -Wd / 2, L, Math.max(1, Wd * 0.3));
+      pctx.restore();
+      return;
+    }
+    if (st === 'dagger') {
+      const dx = Math.cos(s.a), dy = Math.sin(s.a), nx = -dy, ny = dx;
+      const L = s.len, w0 = s.w, w1 = Math.max(0.4, s.w * 0.15);
+      const tx = s.x - dx * L / 2, ty = s.y - dy * L / 2;
+      const hx = s.x + dx * L / 2, hy = s.y + dy * L / 2;
+      pctx.fillStyle = `rgba(${R},${G2},${B},${s.al.toFixed(3)})`;
+      pctx.beginPath();
+      pctx.moveTo(tx + nx * w0 / 2, ty + ny * w0 / 2);
+      pctx.lineTo(hx + nx * w1 / 2, hy + ny * w1 / 2);
+      pctx.lineTo(hx - nx * w1 / 2, hy - ny * w1 / 2);
+      pctx.lineTo(tx - nx * w0 / 2, ty - ny * w0 / 2);
+      pctx.closePath(); pctx.fill();
+      return;
+    }
+    if (st === 'stamp') {
+      pctx.save(); pctx.translate(s.x, s.y); pctx.rotate(s.a);
+      pctx.fillStyle = `rgba(${R},${G2},${B},${s.al.toFixed(3)})`;
+      pctx.beginPath(); pctx.ellipse(0, -s.w * 0.2, s.len * 0.42, s.w * 0.5, 0, 0, 7); pctx.fill();
+      pctx.strokeStyle = `rgba(${R},${G2},${B},${(s.al * 0.8).toFixed(3)})`;
+      pctx.lineWidth = Math.max(1, s.w * 0.12);
+      pctx.beginPath(); pctx.moveTo(0, s.w * 0.2); pctx.lineTo(0, s.w * 0.2 + s.len * 0.35); pctx.stroke();
+      pctx.restore();
+      return;
+    }
     if (st === 'mosaic' || st === 'pixel') {
       pctx.fillStyle = `rgba(${R},${G2},${B},1)`;
       pctx.fillRect(s.x - s.w / 2, s.y - s.w / 2, s.w, s.w);

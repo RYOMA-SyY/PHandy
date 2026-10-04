@@ -29,6 +29,10 @@ transform, underpainting base.
 | inkwash | chunky rect (same as knife) | opaque | grayscale | gray wash |
 | mosaic | axis squares | opaque | photo color | blurred wash |
 | pixel | axis squares, smaller | opaque | 5-level quant | blurred wash |
+| flow | long continuous polylines | thin 0.9-alpha lines | photo color | blurred wash |
+| sculpt | chunky rect + light/shadow sides + drop shadow | opaque relief | photo color | blurred wash |
+| dagger | thick-to-thin tapered polygon | opaque | photo color | blurred wash |
+| stamp | leaf ellipse + stem, random rotation | opaque organic | photo color | blurred wash |
 
 ## Open rulings (need eyeball verdicts)
 
@@ -43,6 +47,9 @@ transform, underpainting base.
   quantization read clearly different.
 - **sketch vs inkwash**: different shapes (flat blocks vs chunky) and bases
   (hatch vs gray wash). Expected: both survive.
+- **flow / sculpt / dagger / stamp**: clear the 2-of-4 rule by construction
+  (polylines / directional relief / tapered polygons / organic stamps share
+  no shape with any existing finish). Confirm visually, no hide expected.
 
 ## Score sheet (fill per test photo)
 
@@ -62,3 +69,7 @@ transform, underpainting base.
 | inkwash | | | |
 | mosaic | | | |
 | pixel | | | |
+| flow | | | |
+| sculpt | | | |
+| dagger | | | |
+| stamp | | | |

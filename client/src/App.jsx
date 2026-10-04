@@ -16,6 +16,10 @@ const FINISHES = [
   ['pixel', 'Pixel art'],
   ['acrylic', 'Acrylic'],
   ['charcoal', 'Charcoal'],
+  ['flow', 'Flow lines'],
+  ['sculpt', 'Sculpted oil'],
+  ['dagger', 'Dagger taper'],
+  ['stamp', 'Leaf stamps'],
 ];
 const DETAIL_NAMES = { 1: 'Draft', 2: 'Medium', 3: 'Fine', 4: 'High', 5: 'Museum' };
 
