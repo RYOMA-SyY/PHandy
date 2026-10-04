@@ -310,7 +310,7 @@ export function createPainter(paintCanvas, hooks = {}) {
       const lum = Math.round(0.299 * rr + 0.587 * gg + 0.114 * bb);
       rr = gg = bb = lum;
     }
-    const c = s.exact ? [s.r, s.g, s.b] : jitterCol(rr, gg, bb, s.j);
+    const c = s.exact ? [s.r, s.g, s.b] : jitterCol(rr, gg, bb, s.j, isMono(S.styleCur));
     brush.set(table[Math.min(s.pi || 0, 4)], `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`, Math.min(3, Math.max(0.35, s.w / 9)));
     brush.flowLine(s.x, s.y, s.len, s.a);
   }
@@ -319,6 +319,13 @@ export function createPainter(paintCanvas, hooks = {}) {
     if (!S.avg) return '#808080';
     return `rgb(${S.avg[0] | 0},${S.avg[1] | 0},${S.avg[2] | 0})`;
   }
+  function grayCss() {
+    if (!S.avg) return '#808080';
+    const m = Math.round(S.avg[0] * 0.299 + S.avg[1] * 0.587 + S.avg[2] * 0.114);
+    return `rgb(${m},${m},${m})`;
+  }
+  // Finishes that must never show color, no matter the source photo.
+  function isMono(st) { return st === 'sketch' || st === 'inkwash' || st === 'charcoal'; }
 
   function underpainting() {
     const stc = cfg.style;
@@ -346,7 +353,7 @@ export function createPainter(paintCanvas, hooks = {}) {
         brush.rect(0, 0, S.W, S.H, 'corner');
         brush.noHatch();
       } else if (S.avg && stc !== 'sketch' && stc !== 'charcoal') {
-        brush.wash(avgCss(), 55);
+        brush.wash(isMono(stc) ? grayCss() : avgCss(), 55);
         brush.rect(0, 0, S.W, S.H, 'corner');
         brush.noWash();
       }
@@ -356,7 +363,7 @@ export function createPainter(paintCanvas, hooks = {}) {
     } else {
       bctx.save();
       bctx.globalAlpha = 0.36;
-      bctx.filter = `blur(${Math.max(8, S.W / 40)}px) saturate(1.2)`;
+      bctx.filter = `blur(${Math.max(8, S.W / 40)}px)${isMono(stc) ? ' grayscale(1)' : ' saturate(1.2)'}`;
       bctx.drawImage(srcC, 0, 0, S.W, S.H);
       bctx.restore();
       bctx.filter = 'none'; bctx.globalAlpha = 1;
@@ -593,8 +600,14 @@ export function createPainter(paintCanvas, hooks = {}) {
     emit(true);
   }
 
-  function jitterCol(r, g, b, j) {
+  function jitterCol(r, g, b, j, mono) {
     const l = (Math.random() - 0.5) * 2 * j;
+    if (mono) {
+      // Black-and-white finishes must stay neutral: luminance-only noise,
+      // never per-channel speckle that reads as color grain.
+      const m = Math.min(255, Math.max(0, (r + g + b) / 3 + l));
+      return [m, m, m];
+    }
     return [
       Math.min(255, Math.max(0, r + l + (Math.random() - 0.5) * j)),
       Math.min(255, Math.max(0, g + l + (Math.random() - 0.5) * j)),
@@ -678,7 +691,7 @@ export function createPainter(paintCanvas, hooks = {}) {
       rr = gg = bb = lum; jj *= 0.6; st = 'gouache';
     }
     if (st === 'inkwash') st = 'knife';
-    const c = s.exact ? [s.r, s.g, s.b] : jitterCol(rr, gg, bb, jj);
+    const c = s.exact ? [s.r, s.g, s.b] : jitterCol(rr, gg, bb, jj, isMono(S.styleCur));
     const R = c[0] | 0, G2 = c[1] | 0, B = c[2] | 0;
     if (st === 'flow') {
       pctx.strokeStyle = `rgba(${R},${G2},${B},${(s.al * 0.9).toFixed(3)})`;
@@ -995,7 +1008,12 @@ export function createPainter(paintCanvas, hooks = {}) {
         `<svg xmlns="http://www.w3.org/2000/svg" width="${S.W}" height="${S.H}" viewBox="0 0 ${S.W} ${S.H}">`,
       ];
       if (st !== 'sketch' && S.avg) {
-        parts.push(`<rect width="${S.W}" height="${S.H}" fill="rgb(${S.avg[0] | 0},${S.avg[1] | 0},${S.avg[2] | 0})" fill-opacity="0.3"/>`);
+        // The kept atmosphere wash follows the finish: neutral gray for the
+        // black-and-white finishes, photo average otherwise.
+        const wr = S.avg[0] | 0, wg = S.avg[1] | 0, wb = S.avg[2] | 0;
+        const wm = isMono(st) ? Math.round(wr * 0.299 + wg * 0.587 + wb * 0.114) : -1;
+        const wash = wm < 0 ? `rgb(${wr},${wg},${wb})` : `rgb(${wm},${wm},${wm})`;
+        parts.push(`<rect width="${S.W}" height="${S.H}" fill="${wash}" fill-opacity="0.3"/>`);
       }
       for (let i = 0; i < S.drawn; i++) parts.push(strokeToSVG(S.strokes[i], st, f));
       parts.push('</svg>');
