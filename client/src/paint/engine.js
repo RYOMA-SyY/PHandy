@@ -52,7 +52,9 @@ function styleColor(r, g, b, st) {
   if (st === 'acrylic') return satBoost(r, g, b, 1.5);
   if (st === 'charcoal') {
     const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    const v = Math.round(10 + lum * 0.4);
+    // Dark-biased curve anchored at both ends: black stays black,
+    // white stays white, midtones drop dark — the charcoal mood.
+    const v = Math.round((lum * lum) / 255);
     return [v, v, v];
   }
   return [r, g, b];
@@ -331,12 +333,15 @@ export function createPainter(paintCanvas, hooks = {}) {
     const stc = cfg.style;
     S.styleCur = stc;
     S.grained = false;
+    // Black-and-white finishes work on white, not cream paper: source white
+    // must render white, source black must reach full black.
+    const base = isMono(stc) ? '#ffffff' : PAPER;
     bctx.save();
     bctx.globalAlpha = 1; bctx.globalCompositeOperation = 'source-over'; bctx.filter = 'none';
-    bctx.fillStyle = PAPER; bctx.fillRect(0, 0, S.W, S.H);
+    bctx.fillStyle = base; bctx.fillRect(0, 0, S.W, S.H);
     bctx.restore();
     if (S.backend === 'natural' && NB.cv) {
-      brush.clear(PAPER);
+      brush.clear(base);
       brush.push();
       brush.translate(-S.W / 2, -S.H / 2);
       if (stc === 'watercolor') {

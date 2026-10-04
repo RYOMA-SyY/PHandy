@@ -21,7 +21,7 @@ transform, underpainting base.
 | poster | rounded rect (same as gouache) | flat matte opaque | 4-level quant + vivid | blurred wash |
 | watercolor | soft ellipse wash | ~1/3 alpha, double dab | jittered photo color | wash() tint |
 | pastel | soft ellipse wash (same) | 1/2 alpha | whitened +20% | wash() tint |
-| charcoal | soft ellipse wash (same) | 0.45 alpha | dark range 10-112 | paper, no wash |
+| charcoal | soft ellipse wash (same) | 0.45 alpha | dark-biased full range (black→black, white→white) | white base, no wash |
 | impressionist | short dab + lift dot | opaque | high jitter | blurred wash |
 | pointillism | dots | opaque | saturated 1.35× | blurred wash |
 | acrylic | short rect + dark dry edge | opaque | vivid 1.5×, no quant | blurred wash |
