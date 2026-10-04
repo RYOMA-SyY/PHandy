@@ -21,7 +21,7 @@ const FINISHES = [
   ['dagger', 'Dagger taper'],
   ['stamp', 'Leaf stamps'],
 ];
-const DETAIL_NAMES = { 1: 'Draft', 2: 'Medium', 3: 'Fine', 4: 'High', 5: 'Museum' };
+const DETAIL_NAMES = { 1: 'Draft', 2: 'Medium', 3: 'Fine', 4: 'High', 5: 'Museum', 6: 'Gallery', 7: 'Masterwork' };
 
 export default function App() {
   const paintRef = useRef(null);
@@ -311,7 +311,7 @@ export default function App() {
                 </div>
                 <div className="field-row">
                   <label htmlFor="detail">Detail ({DETAIL_NAMES[detail]})</label>
-                  <input type="range" id="detail" min="1" max="5" step="1" value={detail}
+                  <input type="range" id="detail" min="1" max="7" step="1" value={detail}
                     onChange={(e) => { setDetail(+e.target.value); syncCfg({ detail: +e.target.value }, true); }} />
                 </div>
                 <div className="field-row">

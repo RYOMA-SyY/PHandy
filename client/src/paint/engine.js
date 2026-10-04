@@ -149,8 +149,8 @@ export function createPainter(paintCanvas, hooks = {}) {
   const QUALITY = {
     fast: { res: 768, mult: 0.5, capClassic: 25000, capNatural: 8000 },
     balanced: { res: 1024, mult: 1, capClassic: 60000, capNatural: 22000 },
-    high: { res: 1536, mult: 1.5, capClassic: 120000, capNatural: 45000 },
-    ultra: { res: 2048, mult: 2, capClassic: 250000, capNatural: 90000 },
+    high: { res: 1536, mult: 1.5, capClassic: 180000, capNatural: 70000 },
+    ultra: { res: 2048, mult: 2, capClassic: 400000, capNatural: 140000 },
   };
   function deviceCap() {
     try {
@@ -469,12 +469,14 @@ export function createPainter(paintCanvas, hooks = {}) {
       { w: 0.34, a: 0.9, jitter: 7 }, { w: 0.18, a: 0.95, jitter: 5 },
     ];
     const use = passes.slice(0, Math.min(passes.length, cfg.detail + 1));
-    if (cfg.detail === 5) use.push({ w: 0.1, a: 0.95, jitter: 4 });
-    const dmult = [0.35, 0.6, 0.85, 1.15, 1.5][cfg.detail - 1] || 1;
+    if (cfg.detail >= 5) use.push({ w: 0.1, a: 0.95, jitter: 4 });
+    if (cfg.detail >= 6) use.push({ w: 0.07, a: 0.95, jitter: 3 });
+    if (cfg.detail >= 7) use.push({ w: 0.05, a: 0.95, jitter: 3 });
+    const dmult = [0.35, 0.6, 0.85, 1.15, 1.5, 2.0, 2.6][cfg.detail - 1] || 1;
     const qm = (QUALITY[cfg.quality] || QUALITY.balanced).mult;
     const caps = (S.backend === 'natural'
-      ? [2500, 4000, 5000, 6000, 4000]
-      : [5000, 9000, 12000, 14000, 10000]
+      ? [2500, 4000, 5000, 6000, 4000, 6000, 9000]
+      : [5000, 9000, 12000, 14000, 10000, 16000, 22000]
     ).map((c) => Math.round(c * dmult * qm * (fx.c || 1)));
     const list = [], tw = S.ow, th = S.oh;
     const ST = S.styleCur, gridStyle = ST === 'mosaic' || ST === 'pixel';
@@ -506,7 +508,7 @@ export function createPainter(paintCanvas, hooks = {}) {
     } else {
     for (let pi = 0; pi < use.length; pi++) {
       if (gridStyle && seen.size >= totalCells) break;
-      const p = use[pi], cap = caps[Math.min(pi, 4)];
+      const p = use[pi], cap = caps[Math.min(pi, caps.length - 1)];
       const bw = Math.max(1.5, base * p.w * fx.w);
       const arr = [];
       let guard = 0;
@@ -908,26 +910,34 @@ export function createPainter(paintCanvas, hooks = {}) {
   function stopLoop() { S.playing = false; cancelAnimationFrame(S.raf); }
   function startPaint() { stopLoop(); S.playing = true; loop(); }
 
+  // Shared job setup: sizes every canvas from the kept photo at the current
+  // Quality tier, then repaints from scratch. Both fresh loads and restarts
+  // funnel through here so exports always match the selected tier.
+  async function beginJob() {
+    const q = QUALITY[cfg.quality] || QUALITY.balanced;
+    const [w, h] = fitSize(S.img.naturalWidth || S.img.width, S.img.naturalHeight || S.img.height, q.res);
+    S.W = w; S.H = h;
+    paintCanvas.width = w; paintCanvas.height = h;
+    layerC.width = w; layerC.height = h;
+    baseC.width = w; baseC.height = h;
+    srcC.width = w; srcC.height = h;
+    sctx.drawImage(S.img, 0, 0, w, h);
+    S.avg = averageColor();
+    jobSetup((Math.random() * 1e9) | 0);
+    underpainting();
+    await buildStrokes();
+    startPaint();
+    return { w, h };
+  }
+
   return {
     cfg,
     get playing() { return S.playing; },
     get hasJob() { return S.strokes.length > 0; },
     get done() { return S.strokes.length > 0 && S.drawn >= S.strokes.length; },
     async loadImage(img) {
-      const q = QUALITY[cfg.quality] || QUALITY.balanced;
-      const [w, h] = fitSize(img.naturalWidth || img.width, img.naturalHeight || img.height, q.res);
-      S.img = img; S.W = w; S.H = h;
-      paintCanvas.width = w; paintCanvas.height = h;
-      layerC.width = w; layerC.height = h;
-      baseC.width = w; baseC.height = h;
-      srcC.width = w; srcC.height = h;
-      sctx.drawImage(img, 0, 0, w, h);
-      S.avg = averageColor();
-      jobSetup((Math.random() * 1e9) | 0);
-      underpainting();
-      await buildStrokes();
-      startPaint();
-      return { w, h };
+      S.img = img;
+      return beginJob();
     },
     pause() { stopLoop(); emit(true); },
     resume() {
@@ -935,11 +945,11 @@ export function createPainter(paintCanvas, hooks = {}) {
       S.playing = true; loop();
     },
     async restart() {
+      // Full re-fit: re-reads size from the kept photo, so switching Quality
+      // (or any style control) applies the tier's resolution, not the stale one.
       if (!S.img) return;
       stopLoop();
-      underpainting();
-      await buildStrokes();
-      startPaint();
+      return beginJob();
     },
     finish() {
       stopLoop();
