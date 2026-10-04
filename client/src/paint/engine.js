@@ -19,6 +19,8 @@ export const STYLE_FX = {
   poster: { w: 1.0, a: 1 },
   mosaic: { w: 1.1, a: 1 },
   pixel: { w: 1.0, a: 1 },
+  acrylic: { w: 1.0, a: 1 },
+  charcoal: { w: 1.2, a: 0.8 },
 };
 
 function quant(v, levels) {
@@ -43,6 +45,12 @@ function styleColor(r, g, b, st) {
   if (st === 'pixel') return [quant(r, 5), quant(g, 5), quant(b, 5)];
   if (st === 'pointillism') return satBoost(r, g, b, 1.35);
   if (st === 'pastel') return [r + (255 - r) * 0.22, g + (255 - g) * 0.22, b + (255 - b) * 0.22];
+  if (st === 'acrylic') return satBoost(r, g, b, 1.5);
+  if (st === 'charcoal') {
+    const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    const v = Math.round(10 + lum * 0.4);
+    return [v, v, v];
+  }
   return [r, g, b];
 }
 const NB_BRUSH = {
@@ -58,6 +66,8 @@ const NB_BRUSH = {
   poster: ['oilflat', 'charcoal', 'HB', '2B', 'rotring'],
   mosaic: ['charcoal', 'HB', 'HB', '2B', '2B'],
   pixel: ['HB', 'HB', '2B', '2B', 'rotring'],
+  acrylic: ['drybrush', 'oilflat', 'crayon', 'HB', '2B'],
+  charcoal: ['charcoal', 'charcoal', 'HB', '2B', 'pencilfine'],
 };
 
 let wfPromise = null;
@@ -267,15 +277,17 @@ export function createPainter(paintCanvas, hooks = {}) {
   }
 
   function underpainting() {
+    const stc = cfg.style;
+    S.styleCur = stc;
     if (S.backend === 'natural' && NB.cv) {
       brush.clear(PAPER);
       brush.push();
       brush.translate(-S.W / 2, -S.H / 2);
-      if (S.styleCur === 'watercolor') {
+      if (stc === 'watercolor') {
         brush.wash(avgCss(), 110);
         brush.rect(0, 0, S.W, S.H, 'corner');
         brush.noWash();
-      } else if (S.styleCur === 'sketch') {
+      } else if (stc === 'sketch') {
         brush.noStroke();
         brush.noFill();
         brush.hatchStyle('pencilfine', '#8a8a8a', 0.7);
@@ -284,7 +296,7 @@ export function createPainter(paintCanvas, hooks = {}) {
         brush.hatch(7, 0.6 + Math.PI / 2, { rand: 0.15 });
         brush.rect(0, 0, S.W, S.H, 'corner');
         brush.noHatch();
-      } else if (S.avg) {
+      } else if (S.avg && stc !== 'sketch' && stc !== 'charcoal') {
         brush.wash(avgCss(), 55);
         brush.rect(0, 0, S.W, S.H, 'corner');
         brush.noWash();
@@ -531,9 +543,13 @@ export function createPainter(paintCanvas, hooks = {}) {
     if (st === 'pointillism') {
       return `<circle cx="${f(s.x)}" cy="${f(s.y)}" r="${f(Math.max(0.8, s.w * 0.5))}" fill="${col}" fill-opacity="${s.al.toFixed(3)}"/>`;
     }
-    if (st === 'watercolor' || st === 'pastel') {
-      const k = st === 'pastel' ? 0.5 : 0.32;
+    if (st === 'watercolor' || st === 'pastel' || st === 'charcoal') {
+      const k = st === 'pastel' ? 0.5 : st === 'charcoal' ? 0.45 : 0.32;
       return `<ellipse cx="${f(s.x)}" cy="${f(s.y)}" rx="${f(s.len * 0.7)}" ry="${f(s.w * 0.9)}" transform="rotate(${deg} ${f(s.x)} ${f(s.y)})" fill="${col}" fill-opacity="${(s.al * k).toFixed(3)}"/>`;
+    }
+    if (st === 'acrylic') {
+      const L = s.len * 0.7, Wd = s.w;
+      return `<g transform="translate(${f(s.x)} ${f(s.y)}) rotate(${deg})"><rect x="${f(-L / 2)}" y="${f(-Wd / 2)}" width="${f(L)}" height="${f(Wd)}" fill="${col}" fill-opacity="${s.al.toFixed(3)}"/><rect x="${f(-L / 2)}" y="${f(Wd / 2 - Math.max(1, Wd * 0.2))}" width="${f(L)}" height="${f(Math.max(1, Wd * 0.2))}" fill="rgb(${Math.max(0, (rr | 0) * 0.65 | 0)},${Math.max(0, (gg | 0) * 0.65 | 0)},${Math.max(0, (bb | 0) * 0.65 | 0)})" fill-opacity="${(s.al * 0.85).toFixed(3)}"/></g>`;
     }
     if (st === 'knife' || st === 'impasto') {
       const L = st === 'knife' ? s.len * 0.8 : s.len, Wd = s.w * (st === 'knife' ? 1.25 : 1);
@@ -570,14 +586,24 @@ export function createPainter(paintCanvas, hooks = {}) {
       pctx.beginPath(); pctx.arc(s.x, s.y, Math.max(0.8, s.w * 0.5), 0, 7); pctx.fill();
       return;
     }
-    if (st === 'watercolor' || st === 'pastel') {
-      const k = st === 'pastel' ? 0.5 : 0.32, k2 = k * 0.625;
+    if (st === 'watercolor' || st === 'pastel' || st === 'charcoal') {
+      const k = st === 'pastel' ? 0.5 : st === 'charcoal' ? 0.45 : 0.32, k2 = k * 0.625;
       pctx.fillStyle = `rgba(${R},${G2},${B},${(s.al * k).toFixed(3)})`;
       pctx.beginPath(); pctx.ellipse(s.x, s.y, s.len * 0.7, s.w * 0.9, s.a, 0, 7); pctx.fill();
       pctx.fillStyle = `rgba(${R},${G2},${B},${(s.al * k2).toFixed(3)})`;
       pctx.beginPath();
       pctx.ellipse(s.x + Math.cos(s.a) * s.len * 0.3, s.y + Math.sin(s.a) * s.len * 0.3, s.len * 0.4, s.w * 0.6, s.a, 0, 7);
       pctx.fill();
+      return;
+    }
+    if (st === 'acrylic') {
+      const L = s.len * 0.7, Wd = s.w;
+      pctx.save(); pctx.translate(s.x, s.y); pctx.rotate(s.a);
+      pctx.fillStyle = `rgba(${R},${G2},${B},${s.al.toFixed(3)})`;
+      pctx.fillRect(-L / 2, -Wd / 2, L, Wd);
+      pctx.fillStyle = `rgba(${R * 0.65 | 0},${G2 * 0.65 | 0},${B * 0.65 | 0},${(s.al * 0.85).toFixed(3)})`;
+      pctx.fillRect(-L / 2, Wd / 2 - Math.max(1, Wd * 0.2), L, Math.max(1, Wd * 0.2));
+      pctx.restore();
       return;
     }
     if (st === 'knife' || st === 'impasto') {

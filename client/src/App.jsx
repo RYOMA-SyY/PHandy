@@ -14,6 +14,8 @@ const FINISHES = [
   ['poster', 'Posterize / pop-art'],
   ['mosaic', 'Mosaic'],
   ['pixel', 'Pixel art'],
+  ['acrylic', 'Acrylic'],
+  ['charcoal', 'Charcoal'],
 ];
 const DETAIL_NAMES = { 1: 'Draft', 2: 'Medium', 3: 'Fine', 4: 'High', 5: 'Museum' };
 
