@@ -129,6 +129,13 @@ export function createPainter(paintCanvas, hooks = {}) {
   const pctx = paintCanvas.getContext('2d', { alpha: false });
   const srcC = document.createElement('canvas');
   const sctx = srcC.getContext('2d', { willReadFrequently: true });
+  // Transparent stroke layer: every stroke lands here, so PNG exports carry
+  // no background. The on-screen canvas keeps its paper look via composite().
+  const layerC = document.createElement('canvas');
+  const lctx = layerC.getContext('2d');
+  // Paper + wash snapshot, painted once per job; display = base + layer.
+  const baseC = document.createElement('canvas');
+  const bctx = baseC.getContext('2d', { alpha: false });
   const hideDiv = document.createElement('div');
   hideDiv.style.cssText = 'position:fixed;left:-10000px;top:0;width:8px;height:8px;overflow:hidden';
   document.body.appendChild(hideDiv);
@@ -259,7 +266,16 @@ export function createPainter(paintCanvas, hooks = {}) {
     if (S.backend !== 'natural' || !NB.cv) return;
     brush.pop();
     brush.render();
-    pctx.drawImage(NB.cv, 0, 0, S.W, S.H);
+    lctx.drawImage(NB.cv, 0, 0, S.W, S.H);
+  }
+  // Display = paper/wash base + transparent stroke layer. The app keeps its
+  // white/paper look; only the layer (no background) is what PNG exports.
+  function composite() {
+    pctx.save();
+    pctx.globalAlpha = 1; pctx.globalCompositeOperation = 'source-over'; pctx.filter = 'none';
+    pctx.drawImage(baseC, 0, 0, S.W, S.H);
+    pctx.drawImage(layerC, 0, 0, S.W, S.H);
+    pctx.restore();
   }
   function paintStroke(s) {
     if (S.backend === 'natural' && NB.cv) nbStroke(s);
@@ -307,6 +323,11 @@ export function createPainter(paintCanvas, hooks = {}) {
   function underpainting() {
     const stc = cfg.style;
     S.styleCur = stc;
+    S.grained = false;
+    bctx.save();
+    bctx.globalAlpha = 1; bctx.globalCompositeOperation = 'source-over'; bctx.filter = 'none';
+    bctx.fillStyle = PAPER; bctx.fillRect(0, 0, S.W, S.H);
+    bctx.restore();
     if (S.backend === 'natural' && NB.cv) {
       brush.clear(PAPER);
       brush.push();
@@ -331,17 +352,18 @@ export function createPainter(paintCanvas, hooks = {}) {
       }
       brush.pop();
       brush.render();
-      pctx.drawImage(NB.cv, 0, 0, S.W, S.H);
-      return;
+      bctx.drawImage(NB.cv, 0, 0, S.W, S.H);
+    } else {
+      bctx.save();
+      bctx.globalAlpha = 0.36;
+      bctx.filter = `blur(${Math.max(8, S.W / 40)}px) saturate(1.2)`;
+      bctx.drawImage(srcC, 0, 0, S.W, S.H);
+      bctx.restore();
+      bctx.filter = 'none'; bctx.globalAlpha = 1;
     }
-    pctx.globalAlpha = 1; pctx.filter = 'none';
-    pctx.fillStyle = PAPER; pctx.fillRect(0, 0, S.W, S.H);
-    pctx.save();
-    pctx.globalAlpha = 0.36;
-    pctx.filter = `blur(${Math.max(8, S.W / 40)}px) saturate(1.2)`;
-    pctx.drawImage(srcC, 0, 0, S.W, S.H);
-    pctx.restore();
-    pctx.filter = 'none'; pctx.globalAlpha = 1;
+    applyGrain(false);
+    lctx.clearRect(0, 0, S.W, S.H);
+    composite();
   }
 
   async function computeFields() {
@@ -646,6 +668,7 @@ export function createPainter(paintCanvas, hooks = {}) {
   }
 
   function drawStroke(s) {
+    const pctx = lctx; // classic strokes accumulate on the transparent layer.
     let st = S.styleCur || 'impasto';
     let rr = s.r, gg = s.g, bb = s.b, jj = s.j;
     if (st === 'sketch') {
@@ -773,7 +796,10 @@ export function createPainter(paintCanvas, hooks = {}) {
 
   let grainTile = null;
   function applyGrain(light) {
-    if (!GRAIN) return;
+    if (!GRAIN || S.grained) return;
+    // Grain lives in the base (under the strokes): it textures the paper on
+    // screen but can never fill the transparent export layer with noise film.
+    S.grained = true;
     if (!grainTile) {
       grainTile = document.createElement('canvas');
       grainTile.width = grainTile.height = 128;
@@ -785,14 +811,14 @@ export function createPainter(paintCanvas, hooks = {}) {
       }
       gx.putImageData(id, 0, 0);
     }
-    pctx.save();
-    pctx.globalAlpha = light ? GRAIN * 0.5 : GRAIN;
-    pctx.globalCompositeOperation = 'overlay';
-    pctx.fillStyle = pctx.createPattern(grainTile, 'repeat');
-    pctx.fillRect(0, 0, S.W, S.H);
-    pctx.restore();
-    pctx.globalAlpha = 1;
-    pctx.globalCompositeOperation = 'source-over';
+    bctx.save();
+    bctx.globalAlpha = light ? GRAIN * 0.5 : GRAIN;
+    bctx.globalCompositeOperation = 'overlay';
+    bctx.fillStyle = bctx.createPattern(grainTile, 'repeat');
+    bctx.fillRect(0, 0, S.W, S.H);
+    bctx.restore();
+    bctx.globalAlpha = 1;
+    bctx.globalCompositeOperation = 'source-over';
   }
 
   // Closed-loop refinement: find worst cells, glaze them with exact colors.
@@ -845,21 +871,13 @@ export function createPainter(paintCanvas, hooks = {}) {
     return cells.length;
   }
 
-  // Returns true when painting should continue with a glaze round.
-  // Machine-independent: stops on measured likeness, not stroke counts.
+  // Refinement glaze: DISABLED for all finishes. The end-of-job rounds
+  // sampled raw photo pixels and stamped them with exact:true, bypassing
+  // each finish's color grading — blue strokes over sketch, mud over ink
+  // wash. The main pass is final now; likeness stays as an info readout.
+  // (addGlazeStrokes/errorCells kept dormant below for a possible return.)
   function checkRefine() {
-    if (S.drawn < S.strokes.length) return false;
-    const like = likeness();
-    const gain = like - (S.lastLike || 0);
-    S.lastLike = like;
-    if (like >= cfg.target || S.refRounds >= (cfg.target > 92 ? 8 : 5)) return false;
-    if (S.refRounds > 0 && gain < (cfg.target > 92 ? 0.2 : 0.5)) return false;
-    S.refRounds++;
-    if (!addGlazeStrokes()) return false;
-    if (hooks.onPlan) {
-      hooks.onPlan(`${S.strokes.length.toLocaleString()} strokes · refining to ${cfg.target}% (round ${S.refRounds}, likeness ${like}%)`);
-    }
-    return true;
+    return false;
   }
 
   function loop() {
@@ -869,6 +887,7 @@ export function createPainter(paintCanvas, hooks = {}) {
     frameStart();
     for (let i = 0; i < n; i++) paintStroke(S.strokes[S.drawn++]);
     frameEnd();
+    composite();
     if (S.drawn % 3000 < batch) applyGrain(true);
     emit(false);
     if (S.drawn >= S.strokes.length) {
@@ -899,6 +918,8 @@ export function createPainter(paintCanvas, hooks = {}) {
       const [w, h] = fitSize(img.naturalWidth || img.width, img.naturalHeight || img.height, q.res);
       S.img = img; S.W = w; S.H = h;
       paintCanvas.width = w; paintCanvas.height = h;
+      layerC.width = w; layerC.height = h;
+      baseC.width = w; baseC.height = h;
       srcC.width = w; srcC.height = h;
       sctx.drawImage(img, 0, 0, w, h);
       S.avg = averageColor();
@@ -925,12 +946,13 @@ export function createPainter(paintCanvas, hooks = {}) {
       frameStart();
       while (S.drawn < S.strokes.length) paintStroke(S.strokes[S.drawn++]);
       frameEnd();
+      composite();
       applyGrain(false);
       S.lastLike = likeness();
       emit(true);
     },
     // Lower target = stops earlier = faster; higher = more glaze rounds = slower.
-    // Raising it on a finished job resumes refining toward the new target.
+    // (Glaze rounds are currently disabled, so the target is display-only.)
     setTarget(v) {
       cfg.target = Math.min(98, Math.max(50, Math.round(v)));
       if (S.strokes.length && S.drawn >= S.strokes.length && !S.playing && (S.lastLike || 0) < cfg.target) {
@@ -939,8 +961,10 @@ export function createPainter(paintCanvas, hooks = {}) {
       return cfg.target;
     },
     exportPNG(name = 'hand-painted.png') {
+      // Strokes only: unpainted areas stay transparent. The app's paper look
+      // lives in the display composite, not in this layer.
       if (!S.drawn) return false;
-      paintCanvas.toBlob((b) => {
+      layerC.toBlob((b) => {
         if (!b) return;
         const a = document.createElement('a');
         a.href = URL.createObjectURL(b);
@@ -959,7 +983,6 @@ export function createPainter(paintCanvas, hooks = {}) {
       const f = (n) => Math.round(n * 10) / 10;
       const parts = [
         `<svg xmlns="http://www.w3.org/2000/svg" width="${S.W}" height="${S.H}" viewBox="0 0 ${S.W} ${S.H}">`,
-        `<rect width="${S.W}" height="${S.H}" fill="${PAPER}"/>`,
       ];
       if (st !== 'sketch' && S.avg) {
         parts.push(`<rect width="${S.W}" height="${S.H}" fill="rgb(${S.avg[0] | 0},${S.avg[1] | 0},${S.avg[2] | 0})" fill-opacity="0.3"/>`);
@@ -982,6 +1005,8 @@ export function createPainter(paintCanvas, hooks = {}) {
     },
     boot() {
       paintCanvas.width = 1024; paintCanvas.height = 768;
+      layerC.width = 1024; layerC.height = 768;
+      baseC.width = 1024; baseC.height = 768;
       pctx.fillStyle = PAPER;
       pctx.fillRect(0, 0, paintCanvas.width, paintCanvas.height);
       pctx.fillStyle = '#5a6a7d';
